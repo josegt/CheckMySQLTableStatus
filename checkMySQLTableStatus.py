@@ -9,6 +9,7 @@
 
 class Value:
     def __init__ (self, value):
+        '''Parses the value.'''
         if str (value)[-1:] in ('K', 'M', 'G'):
             self.__int = int (value[:-1])
             self.__unit = value[-1:]
@@ -17,6 +18,7 @@ class Value:
             self.__unit = None
 
     def __str__ (self):
+        '''If necessary changes the value to number + unit format by rounding.'''
         if self.__unit:
             return str (self.__int) + self.__unit
         if self.__int > 10 ** 9:
@@ -28,6 +30,7 @@ class Value:
         return str (self.__int)
 
     def __int__ (self):
+        '''If necessary changes the value to number format.'''
         if self.__unit == 'K':
             return self.__int * 10 ** 3
         if self.__unit == 'M':
@@ -70,6 +73,7 @@ class Checker:
             self.__value = value
 
         def critical (self):
+            '''Returns critical string if the limit exceeded.'''
             if self.__attribute.getCriticalLimit ():
                 if self.__value > self.__attribute.getCriticalLimit ():
                     critical = str (self.__table) + '.' + str (self.__attribute)
@@ -78,6 +82,7 @@ class Checker:
                     return critical
 
         def warning (self):
+            '''Returns warning string if the limit exceeded.'''
             if self.__attribute.getWarningLimit ():
                 if self.__value > self.__attribute.getWarningLimit ():
                     warning = str (self.__table) + '.' + str (self.__attribute)
@@ -86,6 +91,7 @@ class Checker:
                     return warning
 
         def posting (self):
+            '''Returns performance data for Nagios.'''
             performanceData = str (self.__table) + '.' + str (self.__attribute)
             performanceData += '=' + str (int (self.__value)) + ';'
             if self.__attribute.getWarningLimit ():
@@ -103,6 +109,8 @@ class Checker:
         self.__checks.append (self.Check (*args))
 
     def check (self):
+        '''Returns critical, warning strings and performance data for Nagios.
+        Does not repeat criticals in warning.'''
         criticals = []
         warnings = []
         postings = []
@@ -119,62 +127,102 @@ class Checker:
         return criticals, warnings, postings
 
 class Readme:
-    __lines = []
     def __init__ (self):
+        '''Parses the readme file in the repository. Takes first line as title.
+        Parses texts under headers as sections.'''
         readmeFile = open ('README.md')
-        self.__lines.append (readmeFile.readline ())
+        self.__sections = []
+        line = readmeFile.readline ()
+        self.__title = line
+        body = ''
+        while line:
+            line = readmeFile.readline ()
+            if (not line or line[:2] == '##') and body:
+                self.__sections.append (body)
+            if line[:2] == '##':
+                body = line[3:-1] + ':\n'
+            elif line[:-1] not in ('```', '') and body:
+                body += line
         readmeFile.close ()
 
-    def title (self):
-        return self.__lines[0]
+    def getTitle (self):
+        return self.__title
 
-def parseOptions ():
+    def getSections (self):
+        body = ''
+        for section in self.__sections:
+            body += section + '\n'
+        return body
+
+class Database:
+    def __init__ (self, host, port, user, passwd):
+        import MySQLdb
+        self.__connection = MySQLdb.connect (host = host, port = port, user = user, passwd = passwd)
+        self.__cursor = self.__connection.cursor ()
+
+    def __del__ (self):
+        self.__cursor.close ()
+        self.__connection.close ()
+
+    def execute (self, query):
+        self.__cursor.execute (query)
+        return self.__cursor.fetchall ()
+
+    def getColumnPosition (self, columnName):
+        return [desc[0].lower () for desc in self.__cursor.description].index (columnName)
+
+def parseArguments ():
     readme = Readme ()
-    from optparse import OptionParser
-    optionParser = OptionParser (description = readme.title ())
-    optionParser.add_option ('-H', '--host', action = 'store', type = 'string',
-                             dest = 'host', default = 'localhost',
-                             help = 'hostname')
-    optionParser.add_option ('-P', '--port', action = 'store', type = 'int',
-                             dest = 'port', default = '3306', help = 'port')
-    optionParser.add_option ('-u', '--user', action = 'store', type = 'string',
-                             dest = 'user', help = 'username')
-    optionParser.add_option ('-p', '--pass', action = 'store', type = 'string',
-                             dest = 'passwd', help = 'password')
-    return optionParser.parse_args ()
+    from argparse import ArgumentParser, RawTextHelpFormatter, ArgumentDefaultsHelpFormatter
+    class HelpFormatter (RawTextHelpFormatter, ArgumentDefaultsHelpFormatter):
+        pass
+    argumentParser = ArgumentParser (formatter_class = HelpFormatter,
+                                     description = readme.getTitle (),
+                                     epilog = readme.getSections ())
+    argumentParser.add_argument ('-H', '--host', dest = 'host', default = 'localhost',
+                                 help = 'hostname')
+    argumentParser.add_argument ('-P', '--port', type = int, dest = 'port', default = 3306,
+                                 help = 'port')
+    argumentParser.add_argument ('-u', '--user', action = 'store', dest = 'user',
+                                 help = 'username')
+    argumentParser.add_argument ('-p', '--pass', action = 'store', dest = 'passwd',
+                                 help = 'password')
+
+    def __addOption (value):
+        return value.split (',')
+    argumentParser.add_argument ('-m', '--mode', type = __addOption, dest = 'modes',
+                                 default = 'rowCount,dataLength,indexLength', help = 'modes')
+    argumentParser.add_argument ('-w', '--warning', type = __addOption, dest = 'warningLimits',
+                                 help = 'warning limits')
+    argumentParser.add_argument ('-c', '--critical', type = __addOption, dest = 'criticalLimits',
+                                 help = 'critical limits')
+
+    return argumentParser.parse_args ()
 
 if __name__ == '__main__':
-    attributes = {}
-    attributes[1] = Attribute ('rowCount', warningLimit = Value ('100M'))
-    attributes[2] = Attribute ('dataLength', warningLimit = Value ('50G'))
-    attributes[3] = Attribute ('indexLength', warningLimit = Value ('50G'))
-    attributes[4] = Attribute ('dataFree', warningLimit = Value ('500M'))
-    attributes[5] = Attribute ('autoIncrement', warningLimit = Value ('2G'))
+    attributes = []
+    arguments = parseArguments ()
+    for counter, mode in enumerate (arguments.modes):
+        warningLimit = None
+        if arguments.warningLimits:
+            if counter < len (arguments.warningLimits):
+                warningLimit = Value (arguments.warningLimits[counter])
+        criticalLimit = None
+        if arguments.criticalLimits:
+            if counter < len (arguments.criticalLimits):
+                criticalLimit = Value (arguments.criticalLimits[counter])
+        attributes. append (Attribute (mode, warningLimit, criticalLimit))
 
     checker = Checker ()
-    options, arguments = parseOptions ()
-    import MySQLdb
-    connection = MySQLdb.connect (host = options.host, port = options.port,
-                                  user = options.user, passwd = options.passwd)
-    cursor = connection.cursor ()
-    cursor.execute ('Show schemas')
-    for schemaRow in cursor.fetchall ():
+    database = Database (arguments.host, arguments.port, arguments.user, arguments.passwd)
+    for schemaRow in database.execute ('Show schemas'):
         showTablesQuery = 'Show table status in {} where Engine is not null'
-        cursor.execute (showTablesQuery.format (schemaRow[0]))
-        for tableRow in cursor.fetchall ():
+        for tableRow in database.execute (showTablesQuery.format (schemaRow[0])):
             table = Table (schemaRow[0], tableRow[0])
-            if tableRow[4]:
-                checker.addCheck (table, attributes[1], Value (tableRow[4]))
-            if tableRow[6]:
-                checker.addCheck (table, attributes[2], Value (tableRow[6]))
-            if tableRow[8]:
-                checker.addCheck (table, attributes[3], Value (tableRow[8]))
-            if tableRow[9]:
-                checker.addCheck (table, attributes[4], Value (tableRow[9]))
-            if tableRow[10]:
-                checker.addCheck (table, attributes[5], Value (tableRow[10]))
-    cursor.close ()
-    connection.close ()
+            for attribute in attributes:
+                columnPosition = database.getColumnPosition (str (attribute))
+                if tableRow[columnPosition]:
+                    checker.addCheck (table, attribute, tableRow[columnPosition])
     criticals, warnings, postings = checker.check ()
 
     print 'CheckMySQLTableStatus',
