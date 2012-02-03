@@ -225,7 +225,7 @@ if __name__ == '__main__':
             for attribute in attributes:
                 columnPosition = database.getColumnPosition (str (attribute))
                 if tableRow[columnPosition]:
-                    checker.addCheck (table, attribute, tableRow[columnPosition])
+                    checker.addCheck (table, attribute, Value (tableRow[columnPosition]))
     criticals, warnings, postings = checker.check ()
 
     print 'CheckMySQLTableStatus',
