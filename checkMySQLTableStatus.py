@@ -128,25 +128,16 @@ class Checker:
 
 class Readme:
     def __init__ (self):
-        '''Parses the readme file in the repository. Takes first line as title.
-        Parses texts under headers as sections.'''
+        '''Parses texts under headers as sections on the readme file in the
+        repository..'''
         readmeFile = open ('README.md')
         self.__sections = []
-        line = readmeFile.readline ()
-        self.__title = line
-        body = ''
-        while line:
-            line = readmeFile.readline ()
-            if (not line or line[:2] == '##') and body:
-                self.__sections.append (body)
+        for line in readmeFile.readlines ():
             if line[:2] == '##':
-                body = line[3:-1] + ':\n'
-            elif line[:-1] not in ('```', '') and body:
-                body += line
+                self.__sections.append (line[3:-1] + ':\n')
+            elif self.__sections and line[:-1] not in ('```', ''):
+                self.__sections[-1] += line
         readmeFile.close ()
-
-    def getTitle (self):
-        return self.__title
 
     def getSections (self):
         body = ''
@@ -172,13 +163,17 @@ class Database:
         return [desc[0].lower () for desc in self.__cursor.description].index (columnName)
 
 def parseArguments ():
-    readme = Readme ()
+    description = 'Multiple vales can be given comma separated to modes and limits.'
+    try:
+        readme = Readme ()
+        epilog = readme.getSections ()
+    except IOError:
+        epilog = None
     from argparse import ArgumentParser, RawTextHelpFormatter, ArgumentDefaultsHelpFormatter
-    class HelpFormatter (RawTextHelpFormatter, ArgumentDefaultsHelpFormatter):
-        pass
+    class HelpFormatter (RawTextHelpFormatter, ArgumentDefaultsHelpFormatter): pass
     argumentParser = ArgumentParser (formatter_class = HelpFormatter,
-                                     description = readme.getTitle (),
-                                     epilog = readme.getSections ())
+                                     description = description, epilog = epilog)
+
     argumentParser.add_argument ('-H', '--host', dest = 'host', default = 'localhost',
                                  help = 'hostname')
     argumentParser.add_argument ('-P', '--port', type = int, dest = 'port', default = 3306,
