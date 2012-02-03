@@ -146,14 +146,16 @@ class Readme:
         return body
 
 class Database:
+    __cursor = None
     def __init__ (self, host, port, user, passwd):
         import MySQLdb
         self.__connection = MySQLdb.connect (host = host, port = port, user = user, passwd = passwd)
         self.__cursor = self.__connection.cursor ()
 
     def __del__ (self):
-        self.__cursor.close ()
-        self.__connection.close ()
+        if self.__cursor:
+            self.__cursor.close ()
+            self.__connection.close ()
 
     def execute (self, query):
         self.__cursor.execute (query)
@@ -178,9 +180,9 @@ def parseArguments ():
                                  help = 'hostname')
     argumentParser.add_argument ('-P', '--port', type = int, dest = 'port', default = 3306,
                                  help = 'port')
-    argumentParser.add_argument ('-u', '--user', action = 'store', dest = 'user',
+    argumentParser.add_argument ('-u', '--user', action = 'store', dest = 'user', required = True,
                                  help = 'username')
-    argumentParser.add_argument ('-p', '--pass', action = 'store', dest = 'passwd',
+    argumentParser.add_argument ('-p', '--pass', action = 'store', dest = 'passwd', required = True,
                                  help = 'password')
 
     def __addOption (value):
@@ -208,8 +210,14 @@ if __name__ == '__main__':
                 criticalLimit = Value (arguments.criticalLimits[counter])
         attributes. append (Attribute (mode, warningLimit, criticalLimit))
 
+    import sys
     checker = Checker ()
-    database = Database (arguments.host, arguments.port, arguments.user, arguments.passwd)
+    try:
+        database = Database (arguments.host, arguments.port, arguments.user, arguments.passwd)
+    except:
+        print 'unknown: Cannot connected to the database.',
+        sys.exit (3)
+
     for schemaRow in database.execute ('Show schemas'):
         showTablesQuery = 'Show table status in {} where Engine is not null'
         for tableRow in database.execute (showTablesQuery.format (schemaRow[0])):
@@ -235,8 +243,6 @@ if __name__ == '__main__':
         print '|',
         for posting in postings:
             print posting,
-
-    import sys
     if criticals:
         sys.exit (2)
     if warnings:
