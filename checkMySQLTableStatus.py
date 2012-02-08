@@ -180,15 +180,15 @@ def parseArguments ():
                                  help = 'hostname')
     argumentParser.add_argument ('-P', '--port', type = int, dest = 'port', default = 3306,
                                  help = 'port')
-    argumentParser.add_argument ('-u', '--user', action = 'store', dest = 'user', required = True,
+    argumentParser.add_argument ('-u', '--user', dest = 'user', required = True,
                                  help = 'username')
-    argumentParser.add_argument ('-p', '--pass', action = 'store', dest = 'passwd', required = True,
+    argumentParser.add_argument ('-p', '--pass', dest = 'passwd', required = True,
                                  help = 'password')
 
     def __addOption (value):
         return value.split (',')
     argumentParser.add_argument ('-m', '--mode', type = __addOption, dest = 'modes',
-                                 default = 'rowCount,dataLength,indexLength', help = 'modes')
+                                 default = 'rows,data_length,index_length', help = 'modes')
     argumentParser.add_argument ('-w', '--warning', type = __addOption, dest = 'warningLimits',
                                  help = 'warning limits')
     argumentParser.add_argument ('-c', '--critical', type = __addOption, dest = 'criticalLimits',
