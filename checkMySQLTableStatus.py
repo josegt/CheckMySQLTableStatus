@@ -10,7 +10,7 @@
 class Value:
     def __init__ (self, value):
         '''Parses the value.'''
-        if str (value)[-1:] in ('K', 'M', 'G'):
+        if str (value)[-1:] in ('K', 'M', 'G', 'T'):
             self.__int = int (value[:-1])
             self.__unit = value[-1:]
         else:
@@ -21,6 +21,8 @@ class Value:
         '''If necessary changes the value to number + unit format by rounding.'''
         if self.__unit:
             return str (self.__int) + self.__unit
+        if self.__int > 10 ** 12:
+            return str (round (self.__int / 10 ** 9))[:-2] + 'T'
         if self.__int > 10 ** 9:
             return str (round (self.__int / 10 ** 9))[:-2] + 'G'
         if self.__int > 10 ** 6:
@@ -37,6 +39,8 @@ class Value:
             return self.__int * 10 ** 6
         if self.__unit == 'G':
             return self.__int * 10 ** 9
+        if self.__unit == 'T':
+            return self.__int * 10 ** 12
         return self.__int
 
     def __cmp__ (self, other):
@@ -165,7 +169,8 @@ class Database:
         return [desc[0].lower () for desc in self.__cursor.description].index (columnName)
 
 def parseArguments ():
-    description = 'Multiple vales can be given comma separated to modes and limits.'
+    description = 'Multiple vales can be given comma separated to modes and limits.\n'
+    description += 'K for 10**3, M for 10**6, G for 10**9, T for 10**12 units can be used for limits.\n'
     try:
         readme = Readme ()
         epilog = readme.getSections ()
