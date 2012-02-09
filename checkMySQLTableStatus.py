@@ -22,7 +22,7 @@ class Value:
         if self.__unit:
             return str (self.__int) + self.__unit
         if self.__int > 10 ** 12:
-            return str (round (self.__int / 10 ** 9))[:-2] + 'T'
+            return str (round (self.__int / 10 ** 12))[:-2] + 'T'
         if self.__int > 10 ** 9:
             return str (round (self.__int / 10 ** 9))[:-2] + 'G'
         if self.__int > 10 ** 6:
