@@ -10,9 +10,9 @@
 class Value:
     def __init__ (self, value):
         '''Parses the value.'''
-        if str (value)[-1:] in ('K', 'M', 'G', 'T'):
-            self.__int = int (value[:-1])
-            self.__unit = value[-1:]
+        if str (value) [-1:] in ('K', 'M', 'G', 'T'):
+            self.__int = int (value [:-1])
+            self.__unit = value [-1:]
         else:
             self.__int = int (value)
             self.__unit = None
@@ -22,13 +22,13 @@ class Value:
         if self.__unit:
             return str (self.__int) + self.__unit
         if self.__int > 10 ** 12:
-            return str (round (self.__int / 10 ** 12))[:-2] + 'T'
+            return str (round (self.__int / 10 ** 12)) [:-2] + 'T'
         if self.__int > 10 ** 9:
-            return str (round (self.__int / 10 ** 9))[:-2] + 'G'
+            return str (round (self.__int / 10 ** 9)) [:-2] + 'G'
         if self.__int > 10 ** 6:
-            return str (round (self.__int / 10 ** 6))[:-2] + 'M'
+            return str (round (self.__int / 10 ** 6)) [:-2] + 'M'
         if self.__int > 10 ** 3:
-            return str (round (self.__int / 10 ** 3))[:-2] + 'K'
+            return str (round (self.__int / 10 ** 3)) [:-2] + 'K'
         return str (self.__int)
 
     def __int__ (self):
@@ -138,8 +138,8 @@ class Readme:
         self.__sections = []
         for line in readmeFile.readlines ():
             if line[:2] == '##':
-                self.__sections.append (line[3:-1] + ':\n')
-            elif self.__sections and line[:-1] not in ('```', ''):
+                self.__sections.append (line [3:-1] + ':\n')
+            elif self.__sections and line [:-1] not in ('```', ''):
                 self.__sections[-1] += line
         readmeFile.close ()
 
@@ -166,7 +166,10 @@ class Database:
         return self.__cursor.fetchall ()
 
     def getColumnPosition (self, columnName):
-        return [desc[0].lower () for desc in self.__cursor.description].index (columnName)
+        names = [desc [0] for desc in self.__cursor.description]
+        for id, name in enumerate (names):
+            if columnName.lower () == name.lower ():
+                return id
 
 def parseArguments ():
     description = 'Multiple vales can be given comma separated to modes and limits.\n'
@@ -225,8 +228,8 @@ if __name__ == '__main__':
 
     for schemaRow in database.execute ('Show schemas'):
         showTablesQuery = 'Show table status in {} where Engine is not null'
-        for tableRow in database.execute (showTablesQuery.format (schemaRow[0])):
-            table = Table (schemaRow[0], tableRow[0])
+        for tableRow in database.execute (showTablesQuery.format (schemaRow [0])):
+            table = Table (schemaRow [0], tableRow [0])
             for attribute in attributes:
                 columnPosition = database.getColumnPosition (str (attribute))
                 if tableRow[columnPosition]:
