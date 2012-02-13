@@ -137,13 +137,13 @@ class Readme:
         readmeFile = open ('README.md')
         self.__sections = []
         for line in readmeFile.readlines ():
-            if line[:2] == '##':
+            if line [:2] == '##':
                 self.__sections.append (line [3:-1] + ':\n')
             elif self.__sections and line [:-1] not in ('```', ''):
-                self.__sections[-1] += line
+                self.__sections [-1] += line
         readmeFile.close ()
 
-    def getSections (self):
+    def getSectionsConcatenated (self):
         body = ''
         for section in self.__sections:
             body += section + '\n'
@@ -176,7 +176,7 @@ def parseArguments ():
     description += 'K for 10**3, M for 10**6, G for 10**9, T for 10**12 units can be used for limits.\n'
     try:
         readme = Readme ()
-        epilog = readme.getSections ()
+        epilog = readme.getSectionsConcatenated ()
     except IOError:
         epilog = None
     from argparse import ArgumentParser, RawTextHelpFormatter, ArgumentDefaultsHelpFormatter
