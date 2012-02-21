@@ -6,6 +6,8 @@ Executes "show table status" queries for all schemas on the server. Parse the
 output. Gives Nagios compatible warning, critical notifications and performance
 data for selected values.
 
+Python 2 with MySQLdb and argparse required.
+
 ## Exit Status
 
 * 0 for ok
