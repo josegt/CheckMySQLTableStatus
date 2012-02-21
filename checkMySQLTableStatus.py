@@ -223,7 +223,7 @@ if __name__ == '__main__':
     try:
         database = Database (arguments.host, arguments.port, arguments.user, arguments.passwd)
     except:
-        print 'unknown: Cannot connected to the database.',
+        print 'unknown: Cannot connect to the database.',
         sys.exit (3)
 
     for schemaRow in database.execute ('Show schemas'):
