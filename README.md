@@ -8,6 +8,21 @@ data for selected values.
 
 Python 2 with MySQLdb and argparse required.
 
+## Modes
+
+Modes are the columns on the result of "show table status" query. Numeric ones
+are
+
+* rows
+* avg_row_length
+* data_length
+* max_data_length
+* index_length
+* data_free
+* auto_increment
+
+for MySQl 5.
+
 ## Exit Status
 
 * 0 for ok
