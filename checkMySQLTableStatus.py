@@ -227,8 +227,8 @@ if __name__ == '__main__':
         sys.exit (3)
 
     for schemaRow in database.execute ('Show schemas'):
-        showTablesQuery = 'Show table status in {} where Engine is not null'
-        for tableRow in database.execute (showTablesQuery.format (schemaRow [0])):
+        showTablesQuery = 'Show table status in %s where Engine is not null' % schemaRow [0]
+        for tableRow in database.execute (showTablesQuery):
             table = Table (schemaRow [0], tableRow [0])
             for attribute in attributes:
                 columnPosition = database.getColumnPosition (str (attribute))
