@@ -46,21 +46,6 @@ class Value:
     def __cmp__ (self, other):
         return cmp (int (self), int (other))
 
-class Attribute:
-    def __init__ (self, name, warningLimit = None, criticalLimit = None):
-        self.__name = name
-        self.__warningLimit = warningLimit
-        self.__criticalLimit = criticalLimit
-
-    def __str__ (self):
-        return self.__name
-
-    def getWarningLimit (self):
-        return self.__warningLimit
-
-    def getCriticalLimit (self):
-        return self.__criticalLimit
-
 class Table:
     def __init__ (self, schema, name):
         self.__schema = schema
@@ -69,66 +54,149 @@ class Table:
     def __str__ (self):
         return self.__schema + '.' + self.__name
 
-class Checker:
-    class Check:
-        def __init__ (self, table, attribute, value):
+    __attributes = {}
+    def addAttribute (self, name, value):
+        self.__attributes [name] = value
+
+    def getAttribute (self, name):
+        return self.__attributes [name]
+
+class Output:
+    def __init__ (self, attribute, warningLimit = None, criticalLimit = None):
+        self._attribute = attribute
+        self._warningLimit = warningLimit
+        self._criticalLimit = criticalLimit
+
+    def performanceDataSuffix (self):
+         return ';' + str (self._warningLimit or '') + ';' + str (self._criticalLimit or '') + ';0; '
+
+class OutputAll (Output):
+    __tables = []
+    def check (self, table):
+        self.__tables.append (table)
+
+    def getPerformanceData (self):
+        performanceData = ''
+        for table in self.__tables:
+            performanceData += str (table) + '.' + str (self._attribute) + '=' + str (int (table.getAttribute (self._attribute))) + self.performanceDataSuffix ()
+        return performanceData
+
+class OutputUpperLimit (Output):
+    __warningTables = []
+    __criticalTables = []
+    def check (self, table):
+        '''Check for warning and critical limits. Do not add table to both warning and critical
+        lists.'''
+        if self._criticalLimit and table.getAttribute (self._attribute) > self._criticalLimit:
+            self.__criticalTables.append (table)
+        elif self._warningLimit and table.getAttribute (self._attribute) > self._warningLimit:
+            self.__warningTables.append (table)
+
+    def getWarningMessage (self):
+        message = ''
+        for table in self.__warningTables:
+            message += str (table) + '.' + str (self._attribute) + ' = ' + str (table.getAttribute (self._attribute)) + ' reached ' + str (self._warningLimit) + '; '
+        return message
+
+    def getCriticalMessage (self):
+        message = ''
+        for table in self.__criticalTables:
+            message += str (table) + '.' + str (self._attribute) + ' = ' + str (table.getAttribute (self._attribute)) + ' reached ' + str (self._criticalLimit) + '; '
+        return message
+
+class OutputAggeregate (Output):
+    def getOkMessage (self):
+        if self.getValue ():
+            return str (self) + ' = ' + str (self.getValue ()) + '; '
+        return ''
+
+    def getPerformanceData (self):
+        if self.getValue ():
+            return str (self) + '=' + str (int (self.getValue ())) + self.performanceDataSuffix ()
+
+class OutputAverage (OutputAggeregate):
+    __count = 0
+    __total = 0
+    def check (self, table):
+        '''Count tables and sum values for average calculation.'''
+        self.__count += 1
+        self.__total += int (table.getAttribute (self._attribute))
+
+    def __str__ (self):
+        return str (self._attribute) + '.average'
+
+    def getValue (self):
+        if self.__count:
+            return Value (self.__total / self.__count)
+        return ''
+
+class OutputMaximum (OutputAggeregate):
+    __table = None
+    def check (self, table):
+        '''Get table which has maximum value.'''
+        if self.__table == None or table.getAttribute (self._attribute) > self.getValue ():
             self.__table = table
-            self.__attribute = attribute
-            self.__value = value
 
-        def critical (self):
-            '''Returns critical string if the limit exceeded.'''
-            if self.__attribute.getCriticalLimit ():
-                if self.__value > self.__attribute.getCriticalLimit ():
-                    critical = str (self.__table) + '.' + str (self.__attribute)
-                    critical += ' = ' + str (self.__value) + ' reached '
-                    critical += str (self.__attribute.getCriticalLimit ())
-                    return critical
+    def __str__ (self):
+        return str (self._attribute) + '.maximum'
 
-        def warning (self):
-            '''Returns warning string if the limit exceeded.'''
-            if self.__attribute.getWarningLimit ():
-                if self.__value > self.__attribute.getWarningLimit ():
-                    warning = str (self.__table) + '.' + str (self.__attribute)
-                    warning += ' = ' + str (self.__value) + ' reached '
-                    warning += str (self.__attribute.getWarningLimit ())
-                    return warning
+    def getValue (self):
+        if self.__table:
+            return self.__table.getAttribute (self._attribute)
 
-        def posting (self):
-            '''Returns performance data for Nagios.'''
-            performanceData = str (self.__table) + '.' + str (self.__attribute)
-            performanceData += '=' + str (int (self.__value)) + ';'
-            if self.__attribute.getWarningLimit ():
-                performanceData += str (int (self.__attribute.getWarningLimit ()))
-            performanceData += ';'
-            if self.__attribute.getCriticalLimit ():
-                performanceData += str (int (self.__attribute.getCriticalLimit ()))
-            performanceData += ';0;'
-            return performanceData
+class OutputMinimum (OutputAggeregate):
+    __table = None
+    def check (self, table):
+        '''Get table which has minimum value.'''
+        if self.__table == None or table.getAttribute (self._attribute) < self.getValue ():
+            self.__table = table
 
-    def __init__ (self):
-        self.__checks = []
+    def __str__ (self):
+        return str (self._attribute) + '.minimum'
 
-    def addCheck (self, *args):
-        self.__checks.append (self.Check (*args))
+    def getValue (self):
+        if self.__table:
+            return self.__table.getAttribute (self._attribute)
 
-    def check (self):
-        '''Returns critical, warning strings and performance data for Nagios.
-        Does not repeat criticals in warning.'''
-        criticals = []
-        warnings = []
-        postings = []
-        for check in self.__checks:
-            critical = check.critical ()
-            if critical:
-                criticals.append (critical)
-            else:
-                warning = check.warning ()
-                if warning:
-                    warnings.append (warning)
-            postings.append (check.posting ())
+class Checker:
+    def __init__ (self, attribute, outputs):
+        self.__attribute = attribute
+        for output in outputs:
+            assert isinstance (output, Output)
+        self.__outputs = outputs
 
-        return criticals, warnings, postings
+    def check (self, table, value):
+        table.addAttribute (self.__attribute, value)
+        for output in self.__outputs:
+            output.check (table)
+
+    def getOkMessage (self):
+        message = ''
+        for output in self.__outputs:
+            if hasattr (output, 'getOkMessage'):
+                message += output.getOkMessage ()
+        return message
+
+    def getWarningMessage (self):
+        message = ''
+        for output in self.__outputs:
+            if hasattr (output, 'getWarningMessage'):
+                message += output.getWarningMessage ()
+        return message
+
+    def getCriticalMessage (self):
+        message = ''
+        for output in self.__outputs:
+            if hasattr (output, 'getCriticalMessage'):
+                message += output.getCriticalMessage ()
+        return message
+
+    def getPerformanceData (self):
+        message = ''
+        for output in self.__outputs:
+            if hasattr (output, 'getPerformanceData'):
+                message += output.getPerformanceData ()
+        return message
 
 class Readme:
     def __init__ (self):
@@ -198,28 +266,45 @@ def parseArguments ():
     argumentParser.add_argument ('-m', '--mode', type = __addOption, dest = 'modes',
                                  default = 'rows,data_length,index_length', help = 'modes')
     argumentParser.add_argument ('-w', '--warning', type = __addOption, dest = 'warningLimits',
-                                 help = 'warning limits')
+                                 help = 'warning upper limits')
     argumentParser.add_argument ('-c', '--critical', type = __addOption, dest = 'criticalLimits',
-                                 help = 'critical limits')
+                                 help = 'critical upper limits')
+    argumentParser.add_argument ('-A', '--all', dest = 'all', action = 'store_true',
+                                 default = False, help = 'show all values as performance data')
+    argumentParser.add_argument ('-B', '--average', dest = 'average', action = 'store_true',
+                                 default = False, help = 'show averages')
+    argumentParser.add_argument ('-M', '--maximum', dest = 'maximum', action = 'store_true',
+                                 default = False, help = 'show maximums')
+    argumentParser.add_argument ('-N', '--minimum', dest = 'minimum', action = 'store_true',
+                                 default = False, help = 'show minimums')
 
     return argumentParser.parse_args ()
 
 if __name__ == '__main__':
-    attributes = []
+    checkers = {}
     arguments = parseArguments ()
     for counter, mode in enumerate (arguments.modes):
+        outputs = []
         warningLimit = None
         if arguments.warningLimits:
             if counter < len (arguments.warningLimits):
-                warningLimit = Value (arguments.warningLimits[counter])
+                warningLimit = Value (arguments.warningLimits [counter])
         criticalLimit = None
         if arguments.criticalLimits:
             if counter < len (arguments.criticalLimits):
-                criticalLimit = Value (arguments.criticalLimits[counter])
-        attributes. append (Attribute (mode, warningLimit, criticalLimit))
+                criticalLimit = Value (arguments.criticalLimits [counter])
+        outputs.append (OutputUpperLimit (mode, warningLimit, criticalLimit))
+        if arguments.all:
+            outputs.append (OutputAll (mode))
+        if arguments.average:
+            outputs.append (OutputAverage (mode))
+        if arguments.maximum:
+            outputs.append (OutputMaximum (mode))
+        if arguments.minimum:
+            outputs.append (OutputMinimum (mode))
+        checkers [mode] = (Checker (mode, outputs))
 
     import sys
-    checker = Checker ()
     try:
         database = Database (arguments.host, arguments.port, arguments.user, arguments.passwd)
     except:
@@ -230,29 +315,36 @@ if __name__ == '__main__':
         showTablesQuery = 'Show table status in %s where Engine is not null' % schemaRow [0]
         for tableRow in database.execute (showTablesQuery):
             table = Table (schemaRow [0], tableRow [0])
-            for attribute in attributes:
-                columnPosition = database.getColumnPosition (str (attribute))
-                if tableRow[columnPosition]:
-                    checker.addCheck (table, attribute, Value (tableRow[columnPosition]))
-    criticals, warnings, postings = checker.check ()
+            for attribute, checker in checkers.iteritems ():
+                columnPosition = database.getColumnPosition (attribute)
+                if tableRow [columnPosition]:
+                    checker.check (table, Value (tableRow[columnPosition]))
 
     print 'CheckMySQLTableStatus',
-    if criticals:
-        print 'critical:',
-        for critical in criticals:
-            print critical + ';',
-    if warnings:
-        print 'warning:',
-        for warning in warnings:
-            print warning + ';',
-    if not criticals and not warnings:
-        print 'ok',
-    if postings:
-        print '|',
-        for posting in postings:
-            print posting,
-    if criticals:
+    criticalMessage = ''
+    for checker in checkers.itervalues ():
+        criticalMessage += checker.getCriticalMessage ()
+    if criticalMessage:
+        print 'critical:', criticalMessage,
+    warningMessage = ''
+    for checker in checkers.itervalues ():
+        warningMessage += checker.getWarningMessage ()
+    if warningMessage:
+        print 'warning:', warningMessage,
+    if not criticalMessage and not warningMessage:
+        okMessage = ''
+        for checker in checkers.itervalues ():
+            okMessage += checker.getOkMessage ()
+        print 'ok:', okMessage,
+
+    performanceData = ''
+    for checker in checkers.itervalues ():
+        performanceData += checker.getPerformanceData ()
+    if performanceData:
+        print '|', performanceData,
+
+    if criticalMessage:
         sys.exit (2)
-    if warnings:
+    if warningMessage:
         sys.exit (1)
     sys.exit (0)
