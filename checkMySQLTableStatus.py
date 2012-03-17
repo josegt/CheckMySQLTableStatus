@@ -50,16 +50,17 @@ class Table:
     def __init__ (self, schema, name):
         self.__schema = schema
         self.__name = name
+        self.__attributes = {}
 
     def __str__ (self):
         return self.__schema + '.' + self.__name
 
-    __attributes = {}
     def addAttribute (self, name, value):
         self.__attributes [name] = value
 
     def getAttribute (self, name):
-        return self.__attributes [name]
+        if self.__attributes.has_key (name):
+            return self.__attributes [name]
 
 class Output:
     def __init__ (self, attribute, warningLimit = None, criticalLimit = None):
@@ -68,140 +69,141 @@ class Output:
         self._criticalLimit = criticalLimit
 
     def performanceDataSuffix (self):
-         return ';' + str (self._warningLimit or '') + ';' + str (self._criticalLimit or '') + ';0; '
+        return ';' + str (self._warningLimit or '') + ';' + str (self._criticalLimit or '') + ';0; '
 
 class OutputAll (Output):
-    __tables = []
+    def __init__ (self, *args):
+        Output.__init__ (self, *args)
+        self.__tables = []
+
     def check (self, table):
-        self.__tables.append (table)
+        if table.getAttribute (self._attribute):
+            self.__tables.append (table)
 
-    def getPerformanceData (self):
-        performanceData = ''
-        for table in self.__tables:
-            performanceData += str (table) + '.' + str (self._attribute) + '=' + str (int (table.getAttribute (self._attribute))) + self.performanceDataSuffix ()
-        return performanceData
-
-class OutputUpperLimit (Output):
-    __warningTables = []
-    __criticalTables = []
-    def check (self, table):
-        '''Check for warning and critical limits. Do not add table to both warning and critical
-        lists.'''
-        if self._criticalLimit and table.getAttribute (self._attribute) > self._criticalLimit:
-            self.__criticalTables.append (table)
-        elif self._warningLimit and table.getAttribute (self._attribute) > self._warningLimit:
-            self.__warningTables.append (table)
-
-    def getWarningMessage (self):
-        message = ''
-        for table in self.__warningTables:
-            message += str (table) + '.' + str (self._attribute) + ' = ' + str (table.getAttribute (self._attribute)) + ' reached ' + str (self._warningLimit) + '; '
-        return message
-
-    def getCriticalMessage (self):
-        message = ''
-        for table in self.__criticalTables:
-            message += str (table) + '.' + str (self._attribute) + ' = ' + str (table.getAttribute (self._attribute)) + ' reached ' + str (self._criticalLimit) + '; '
-        return message
-
-class OutputAggeregate (Output):
-    def getOkMessage (self):
-        if self.getValue ():
-            return str (self) + ' = ' + str (self.getValue ()) + '; '
+    def getMessage (self, name):
+        if name == 'performance':
+            message = ''
+            for table in self.__tables:
+                message += str (table) + '.' + self._attribute + '=' + str (int (table.getAttribute (self._attribute)))
+                message += self.performanceDataSuffix ()
+            return message
         return ''
 
-    def getPerformanceData (self):
+class OutputUpperLimit (Output):
+    def __init__ (self, *args):
+        Output.__init__ (self, *args)
+        self.__warningTables = []
+        self.__criticalTables = []
+
+    def check (self, table):
+        '''Check for warning and critical limits. Do not add table to both warning and critical lists.'''
+        if table.getAttribute (self._attribute):
+            if self._criticalLimit and table.getAttribute (self._attribute) > self._criticalLimit:
+                self.__criticalTables.append (table)
+            elif self._warningLimit and table.getAttribute (self._attribute) > self._warningLimit:
+                self.__warningTables.append (table)
+
+    def getTableMessagesConcatenated (self, tables, limit):
+        message = ''
+        for table in tables:
+            message += str (table) + '.' + self._attribute + ' = ' + str (table.getAttribute (self._attribute))
+            message += ' reached ' + str (limit) + '; '
+        return message
+
+    def getMessage (self, name):
+        if name == 'warning':
+            return self.getTableMessagesConcatenated (self.__warningTables, self._warningLimit)
+        if name == 'critical':
+            return self.getTableMessagesConcatenated (self.__criticalTables, self._criticalLimit)
+        return ''
+
+class OutputAggeregate (Output):
+    def getMessage (self, name):
         if self.getValue ():
-            return str (self) + '=' + str (int (self.getValue ())) + self.performanceDataSuffix ()
+            if name == 'ok':
+                return self.getParameter () + ' = ' + str (self.getValue ()) + '; '
+            if name == 'performance':
+                return self.getParameter () + '=' + str (int (self.getValue ())) + self.performanceDataSuffix ()
+        return ''
 
 class OutputAverage (OutputAggeregate):
-    __count = 0
-    __total = 0
+    def __init__ (self, *args):
+        Output.__init__ (self, *args)
+        self.__count = 0
+        self.__total = 0
+
     def check (self, table):
         '''Count tables and sum values for average calculation.'''
-        self.__count += 1
-        self.__total += int (table.getAttribute (self._attribute))
+        if table.getAttribute (self._attribute):
+            self.__count += 1
+            self.__total += int (table.getAttribute (self._attribute))
 
-    def __str__ (self):
-        return str (self._attribute) + '.average'
+    def getParameter (self):
+        return self._attribute + '.average'
 
     def getValue (self):
         if self.__count:
             return Value (self.__total / self.__count)
-        return ''
 
 class OutputMaximum (OutputAggeregate):
-    __table = None
+    def __init__ (self, *args):
+        Output.__init__ (self, *args)
+        self.__table = None
+
     def check (self, table):
         '''Get table which has maximum value.'''
-        if self.__table == None or table.getAttribute (self._attribute) > self.getValue ():
-            self.__table = table
+        if table.getAttribute (self._attribute):
+            if not self.__table or table.getAttribute (self._attribute) > self.__table.getAttribute (self._attribute):
+                self.__table = table
 
-    def __str__ (self):
-        return str (self._attribute) + '.maximum'
+    def getParameter (self):
+        return self._attribute + '.maximum'
 
     def getValue (self):
         if self.__table:
             return self.__table.getAttribute (self._attribute)
 
 class OutputMinimum (OutputAggeregate):
-    __table = None
+    def __init__ (self, *args):
+        Output.__init__ (self, *args)
+        self.__table = None
+
     def check (self, table):
         '''Get table which has minimum value.'''
-        if self.__table == None or table.getAttribute (self._attribute) < self.getValue ():
-            self.__table = table
+        if table.getAttribute (self._attribute):
+            if not self.__table or table.getAttribute (self._attribute) < self.__table.getAttribute (self._attribute):
+                self.__table = table
 
-    def __str__ (self):
-        return str (self._attribute) + '.minimum'
+    def getParameter (self):
+        return self._attribute + '.minimum'
 
     def getValue (self):
         if self.__table:
             return self.__table.getAttribute (self._attribute)
 
 class Checker:
-    def __init__ (self, attribute, outputs):
-        self.__attribute = attribute
-        for output in outputs:
-            assert isinstance (output, Output)
-        self.__outputs = outputs
+    def __init__ (self):
+        self.__outputs = []
 
-    def check (self, table, value):
-        table.addAttribute (self.__attribute, value)
+    def addOutput (self, output):
+        assert isinstance (output, Output)
+        self.__outputs.append (output)
+
+    def check (self, *args):
         for output in self.__outputs:
-            output.check (table)
+            if hasattr (output, 'check'):
+                output.check (*args)
 
-    def getOkMessage (self):
+    def getMessage (self, name):
         message = ''
         for output in self.__outputs:
-            if hasattr (output, 'getOkMessage'):
-                message += output.getOkMessage ()
-        return message
-
-    def getWarningMessage (self):
-        message = ''
-        for output in self.__outputs:
-            if hasattr (output, 'getWarningMessage'):
-                message += output.getWarningMessage ()
-        return message
-
-    def getCriticalMessage (self):
-        message = ''
-        for output in self.__outputs:
-            if hasattr (output, 'getCriticalMessage'):
-                message += output.getCriticalMessage ()
-        return message
-
-    def getPerformanceData (self):
-        message = ''
-        for output in self.__outputs:
-            if hasattr (output, 'getPerformanceData'):
-                message += output.getPerformanceData ()
+            if hasattr (output, 'getMessage'):
+                message += output.getMessage (name)
         return message
 
 class Readme:
     def __init__ (self):
-        '''Parses texts under headers as sections on the readme file in the
-        repository..'''
+        '''Parse texts on the readme file on the repository to sections..'''
         readmeFile = open ('README.md')
         self.__sections = []
         for line in readmeFile.readlines ():
@@ -229,15 +231,15 @@ class Database:
             self.__cursor.close ()
             self.__connection.close ()
 
-    def execute (self, query):
+    def select (self, query):
         self.__cursor.execute (query)
         return self.__cursor.fetchall ()
 
     def getColumnPosition (self, columnName):
         names = [desc [0] for desc in self.__cursor.description]
-        for id, name in enumerate (names):
+        for __id, name in enumerate (names):
             if columnName.lower () == name.lower ():
-                return id
+                return __id
 
 def parseArguments ():
     description = 'Multiple vales can be given comma separated to modes and limits.\n'
@@ -281,10 +283,13 @@ def parseArguments ():
     return argumentParser.parse_args ()
 
 if __name__ == '__main__':
-    checkers = {}
+    print 'CheckMySQLTableStatus',
+
     arguments = parseArguments ()
+    attributes = []
+    checker = Checker ()
     for counter, mode in enumerate (arguments.modes):
-        outputs = []
+        attributes.append (mode)
         warningLimit = None
         if arguments.warningLimits:
             if counter < len (arguments.warningLimits):
@@ -293,16 +298,15 @@ if __name__ == '__main__':
         if arguments.criticalLimits:
             if counter < len (arguments.criticalLimits):
                 criticalLimit = Value (arguments.criticalLimits [counter])
-        outputs.append (OutputUpperLimit (mode, warningLimit, criticalLimit))
+        checker.addOutput (OutputUpperLimit (mode, warningLimit, criticalLimit))
         if arguments.all:
-            outputs.append (OutputAll (mode))
+            checker.addOutput (OutputAll (mode, warningLimit, criticalLimit))
         if arguments.average:
-            outputs.append (OutputAverage (mode))
+            checker.addOutput (OutputAverage (mode, warningLimit, criticalLimit))
         if arguments.maximum:
-            outputs.append (OutputMaximum (mode))
+            checker.addOutput (OutputMaximum (mode, warningLimit, criticalLimit))
         if arguments.minimum:
-            outputs.append (OutputMinimum (mode))
-        checkers [mode] = (Checker (mode, outputs))
+            checker.addOutput (OutputMinimum (mode, warningLimit, criticalLimit))
 
     import sys
     try:
@@ -311,35 +315,29 @@ if __name__ == '__main__':
         print 'unknown: Cannot connect to the database.',
         sys.exit (3)
 
-    for schemaRow in database.execute ('Show schemas'):
+    for schemaRow in database.select ('Show schemas'):
         showTablesQuery = 'Show table status in %s where Engine is not null' % schemaRow [0]
-        for tableRow in database.execute (showTablesQuery):
+        for tableRow in database.select (showTablesQuery):
             table = Table (schemaRow [0], tableRow [0])
-            for attribute, checker in checkers.iteritems ():
+            for attribute in attributes:
                 columnPosition = database.getColumnPosition (attribute)
-                if tableRow [columnPosition]:
-                    checker.check (table, Value (tableRow[columnPosition]))
+                if tableRow[columnPosition]:
+                    table.addAttribute (attribute, Value (tableRow[columnPosition]))
+            checker.check (table)
 
-    print 'CheckMySQLTableStatus',
-    criticalMessage = ''
-    for checker in checkers.itervalues ():
-        criticalMessage += checker.getCriticalMessage ()
+    criticalMessage = checker.getMessage ('critical')
     if criticalMessage:
         print 'critical:', criticalMessage,
-    warningMessage = ''
-    for checker in checkers.itervalues ():
-        warningMessage += checker.getWarningMessage ()
+    warningMessage = checker.getMessage ('warning')
     if warningMessage:
         print 'warning:', warningMessage,
     if not criticalMessage and not warningMessage:
-        okMessage = ''
-        for checker in checkers.itervalues ():
-            okMessage += checker.getOkMessage ()
-        print 'ok:', okMessage,
-
-    performanceData = ''
-    for checker in checkers.itervalues ():
-        performanceData += checker.getPerformanceData ()
+        okMessage = checker.getMessage ('ok')
+        if okMessage:
+            print 'ok:', okMessage,
+        else:
+            print 'ok',
+    performanceData = checker.getMessage ('performance')
     if performanceData:
         print '|', performanceData,
 
