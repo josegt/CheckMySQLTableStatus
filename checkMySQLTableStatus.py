@@ -284,67 +284,66 @@ def parseArguments ():
 
 if __name__ == '__main__':
     print 'CheckMySQLTableStatus',
-
-    arguments = parseArguments ()
-    attributes = []
-    checker = Checker ()
-    for counter, mode in enumerate (arguments.modes):
-        attributes.append (mode)
-        warningLimit = None
-        if arguments.warnings:
-            if counter < len (arguments.warnings):
-                warningLimit = Value (arguments.warnings [counter])
-        criticalLimit = None
-        if arguments.criticals:
-            if counter < len (arguments.criticals):
-                criticalLimit = Value (arguments.criticals [counter])
-        checker.addOutput (OutputUpperLimit (mode, warningLimit, criticalLimit))
-        if arguments.all:
-            checker.addOutput (OutputAll (mode, warningLimit, criticalLimit))
-        elif arguments.tables:
-            checker.addOutput (OutputTables (arguments.tables, mode, warningLimit, criticalLimit))
-        if arguments.average:
-            checker.addOutput (OutputAverage (mode, warningLimit, criticalLimit))
-        if arguments.maximum:
-            checker.addOutput (OutputMaximum (mode, warningLimit, criticalLimit))
-        if arguments.minimum:
-            checker.addOutput (OutputMinimum (mode, warningLimit, criticalLimit))
-
     import sys
     try:
+        arguments = parseArguments ()
+        attributes = []
+        checker = Checker ()
+        for counter, mode in enumerate (arguments.modes):
+            attributes.append (mode)
+            warningLimit = None
+            if arguments.warnings:
+                if counter < len (arguments.warnings):
+                    warningLimit = Value (arguments.warnings [counter])
+            criticalLimit = None
+            if arguments.criticals:
+                if counter < len (arguments.criticals):
+                    criticalLimit = Value (arguments.criticals [counter])
+            checker.addOutput (OutputUpperLimit (mode, warningLimit, criticalLimit))
+            if arguments.all:
+                checker.addOutput (OutputAll (mode, warningLimit, criticalLimit))
+            elif arguments.tables:
+                checker.addOutput (OutputTables (arguments.tables, mode, warningLimit, criticalLimit))
+            if arguments.average:
+                checker.addOutput (OutputAverage (mode, warningLimit, criticalLimit))
+            if arguments.maximum:
+                checker.addOutput (OutputMaximum (mode, warningLimit, criticalLimit))
+            if arguments.minimum:
+                checker.addOutput (OutputMinimum (mode, warningLimit, criticalLimit))
+
+
         database = Database (arguments.host, arguments.port, arguments.user, arguments.passwd)
-    except:
-        print 'unknown: Cannot connect to the database.',
+        for schemaRow in database.select ('Show schemas'):
+            showTablesQuery = 'Show table status in %s where Engine is not null' % schemaRow [0]
+            for tableRow in database.select (showTablesQuery):
+                table = Table (schemaRow [0], tableRow [0])
+                for attribute in attributes:
+                    columnPosition = database.getColumnPosition (attribute)
+                    if tableRow[columnPosition]:
+                        table.addAttribute (attribute, Value (tableRow[columnPosition]))
+                checker.check (table)
+
+        criticalMessage = checker.getMessage ('critical')
+        if criticalMessage:
+            print 'critical:', criticalMessage,
+        warningMessage = checker.getMessage ('warning')
+        if warningMessage:
+            print 'warning:', warningMessage,
+        if not criticalMessage and not warningMessage:
+            okMessage = checker.getMessage ('ok')
+            if okMessage:
+                print 'ok:', okMessage,
+            else:
+                print 'ok',
+        performanceData = checker.getMessage ('performance')
+        if performanceData:
+            print '|', performanceData,
+
+        if criticalMessage:
+            sys.exit (2)
+        if warningMessage:
+            sys.exit (1)
+        sys.exit (0)
+    except Exception as exception:
+        print 'unknown:', exception
         sys.exit (3)
-
-    for schemaRow in database.select ('Show schemas'):
-        showTablesQuery = 'Show table status in %s where Engine is not null' % schemaRow [0]
-        for tableRow in database.select (showTablesQuery):
-            table = Table (schemaRow [0], tableRow [0])
-            for attribute in attributes:
-                columnPosition = database.getColumnPosition (attribute)
-                if tableRow[columnPosition]:
-                    table.addAttribute (attribute, Value (tableRow[columnPosition]))
-            checker.check (table)
-
-    criticalMessage = checker.getMessage ('critical')
-    if criticalMessage:
-        print 'critical:', criticalMessage,
-    warningMessage = checker.getMessage ('warning')
-    if warningMessage:
-        print 'warning:', warningMessage,
-    if not criticalMessage and not warningMessage:
-        okMessage = checker.getMessage ('ok')
-        if okMessage:
-            print 'ok:', okMessage,
-        else:
-            print 'ok',
-    performanceData = checker.getMessage ('performance')
-    if performanceData:
-        print '|', performanceData,
-
-    if criticalMessage:
-        sys.exit (2)
-    if warningMessage:
-        sys.exit (1)
-    sys.exit (0)
