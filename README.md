@@ -2,8 +2,8 @@ CheckMySQLTableStatus a script to monitor MySQL table status.
 
 ## Description
 
-Executes "show table status" queries for all schemas on the server. Parse the output. Gives Nagios
-compatible warning, critical notifications and performance data for selected values.
+Executes "show table status" queries for all schemas on the server. Parse the output. Gives Nagios compatible warning,
+critical notifications and performance data for selected values.
 
 Python 2 with MySQLdb and argparse required.
 
@@ -35,9 +35,8 @@ for MySQL 5.
 ```
 
 ```
-./checkMySQLTableStatus.py -H *** -u *** -p *** \
-        -m rows,data_length,index_length,data_free,auto_increment \
-        -w 100M,50G,50G,500M,2G
+./checkMySQLTableStatus.py -H *** -u *** -p *** -m rows,data_length,index_length,data_free,auto_increment \
+                           -w 100M,50G,50G,500M,2G
 ```
 
 ```
@@ -45,12 +44,11 @@ for MySQL 5.
 ```
 
 ```
-./checkMySQLTableStatus.py -m auto_increment -w 2G
+./checkMySQLTableStatus.py -m auto_increment -w 2G -t Library.Book,Library.User
 ```
 
 ```
-./checkMySQLTableStatus.py -m data_length,index_length,data_free \
-        -w 50G,50G,500M -l 5M,5M,5M -ABMN
+./checkMySQLTableStatus.py -m data_length,index_length,data_free -w 50G,50G,500M -l 5M,5M,5M -aAMN
 ```
 
 ## Source

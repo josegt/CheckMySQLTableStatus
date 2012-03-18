@@ -68,65 +68,71 @@ class Output:
         self._warningLimit = warningLimit
         self._criticalLimit = criticalLimit
 
-    def performanceDataSuffix (self):
-        return ';' + str (self._warningLimit or '') + ';' + str (self._criticalLimit or '') + ';0; '
+    def getPerformanceData (self, name, value):
+        message = name + '.' + self._attribute + '=' + str (value) + ';'
+        if self._warningLimit:
+            message += str (int (self._warningLimit))
+        message += ';'
+        if self._criticalLimit:
+            message += str (int (self._criticalLimit))
+        return message + ';0;'
 
 class OutputAll (Output):
     def __init__ (self, *args):
         Output.__init__ (self, *args)
-        self.__tables = []
+        self.__message = ''
+
+    def addMessageForTable (self, table):
+        if self.__message:
+            self.__message += ' '
+        self.__message += self.getPerformanceData (str (table), int (table.getAttribute (self._attribute)))
 
     def check (self, table):
         if table.getAttribute (self._attribute):
-            self.__tables.append (table)
+            self.addMessageForTable (table)
 
     def getMessage (self, name):
         if name == 'performance':
-            message = ''
-            for table in self.__tables:
-                message += str (table) + '.' + self._attribute + '=' + str (int (table.getAttribute (self._attribute)))
-                message += self.performanceDataSuffix ()
-            return message
-        return ''
+            return self.__message
+
+class OutputTables (OutputAll):
+    def __init__ (self, tableNames, *args):
+        OutputAll.__init__ (self, *args)
+        self.__tableNames = tableNames
+
+    def check (self, table):
+        if table.getAttribute (self._attribute):
+            for tableName in self.__tableNames:
+                if tableName == str (table):
+                    self.addMessageForTable (table)
 
 class OutputUpperLimit (Output):
     def __init__ (self, *args):
         Output.__init__ (self, *args)
-        self.__warningTables = []
-        self.__criticalTables = []
+        self.__messages = {}
+
+    def addMessageForTable (self, name, table, limit):
+        if not self.__messages.has_key (name):
+            self.__messages [name] = ''
+        else:
+            self.__messages [name] += ' '
+        self.__messages [name] += str (table) + '.' + self._attribute + ' = '
+        self.__messages [name] += str (table.getAttribute (self._attribute)) + ' reached '
+        self.__messages [name] += str (limit) + ';'
 
     def check (self, table):
-        '''Check for warning and critical limits. Do not add table to both warning and critical lists.'''
+        '''Check for warning and critical limits. Do not add message to both warning and critical lists.'''
         if table.getAttribute (self._attribute):
             if self._criticalLimit and table.getAttribute (self._attribute) > self._criticalLimit:
-                self.__criticalTables.append (table)
+                self.addMessageForTable ('critical', table, self._criticalLimit)
             elif self._warningLimit and table.getAttribute (self._attribute) > self._warningLimit:
-                self.__warningTables.append (table)
-
-    def getTableMessagesConcatenated (self, tables, limit):
-        message = ''
-        for table in tables:
-            message += str (table) + '.' + self._attribute + ' = ' + str (table.getAttribute (self._attribute))
-            message += ' reached ' + str (limit) + '; '
-        return message
+                self.addMessageForTable ('warning', table, self._warningLimit)
 
     def getMessage (self, name):
-        if name == 'warning':
-            return self.getTableMessagesConcatenated (self.__warningTables, self._warningLimit)
-        if name == 'critical':
-            return self.getTableMessagesConcatenated (self.__criticalTables, self._criticalLimit)
-        return ''
+        if self.__messages.has_key (name):
+            return self.__messages [name]
 
-class OutputAggeregate (Output):
-    def getMessage (self, name):
-        if self.getValue ():
-            if name == 'ok':
-                return self.getParameter () + ' = ' + str (self.getValue ()) + '; '
-            if name == 'performance':
-                return self.getParameter () + '=' + str (int (self.getValue ())) + self.performanceDataSuffix ()
-        return ''
-
-class OutputAverage (OutputAggeregate):
+class OutputAverage (Output):
     def __init__ (self, *args):
         Output.__init__ (self, *args)
         self.__count = 0
@@ -138,14 +144,14 @@ class OutputAverage (OutputAggeregate):
             self.__count += 1
             self.__total += int (table.getAttribute (self._attribute))
 
-    def getParameter (self):
-        return self._attribute + '.average'
-
-    def getValue (self):
+    def getMessage (self, name):
         if self.__count:
-            return Value (self.__total / self.__count)
+            if name == 'ok':
+                return 'average ' + self._attribute + ' = ' + str (round (self.__total / self.__count)) + ';'
+            if name == 'performance':
+                return self.getPerformanceData ('average', round (self.__total / self.__count))
 
-class OutputMaximum (OutputAggeregate):
+class OutputMaximum (Output):
     def __init__ (self, *args):
         Output.__init__ (self, *args)
         self.__table = None
@@ -156,14 +162,15 @@ class OutputMaximum (OutputAggeregate):
             if not self.__table or table.getAttribute (self._attribute) > self.__table.getAttribute (self._attribute):
                 self.__table = table
 
-    def getParameter (self):
-        return self._attribute + '.maximum'
-
-    def getValue (self):
+    def getMessage (self, name):
         if self.__table:
-            return self.__table.getAttribute (self._attribute)
+            if name == 'ok':
+                message = 'maximum ' + self._attribute + ' = ' + str (self.__table.getAttribute (self._attribute))
+                return message + ' for table ' + str (self.__table) + ';'
+            if name == 'performance':
+                return self.getPerformanceData ('maximum', int (self.__table.getAttribute (self._attribute)))
 
-class OutputMinimum (OutputAggeregate):
+class OutputMinimum (Output):
     def __init__ (self, *args):
         Output.__init__ (self, *args)
         self.__table = None
@@ -174,12 +181,13 @@ class OutputMinimum (OutputAggeregate):
             if not self.__table or table.getAttribute (self._attribute) < self.__table.getAttribute (self._attribute):
                 self.__table = table
 
-    def getParameter (self):
-        return self._attribute + '.minimum'
-
-    def getValue (self):
+    def getMessage (self, name):
         if self.__table:
-            return self.__table.getAttribute (self._attribute)
+            if name == 'ok':
+                message = 'minimum' + self._attribute + ' = ' + str (self.__table.getAttribute (self._attribute))
+                return message + ' for table ' + str (self.__table) + ';'
+            if name == 'performance':
+                return self.getPerformanceData ('minimum', int (self.__table.getAttribute (self._attribute)))
 
 class Checker:
     def __init__ (self):
@@ -198,7 +206,11 @@ class Checker:
         message = ''
         for output in self.__outputs:
             if hasattr (output, 'getMessage'):
-                message += output.getMessage (name)
+                newMessage = output.getMessage (name)
+                if newMessage:
+                    if message:
+                        message += ' '
+                    message += newMessage
         return message
 
 class Readme:
@@ -244,6 +256,7 @@ class Database:
 def parseArguments ():
     description = 'Multiple vales can be given comma separated to modes and limits.\n'
     description += 'K for 10**3, M for 10**6, G for 10**9, T for 10**12 units can be used for limits.\n'
+    defaultModes = 'rows,data_length,index_length'
     try:
         readme = Readme ()
         epilog = readme.getSectionsConcatenated ()
@@ -251,35 +264,22 @@ def parseArguments ():
         epilog = None
     from argparse import ArgumentParser, RawTextHelpFormatter, ArgumentDefaultsHelpFormatter
     class HelpFormatter (RawTextHelpFormatter, ArgumentDefaultsHelpFormatter): pass
-    argumentParser = ArgumentParser (formatter_class = HelpFormatter,
-                                     description = description, epilog = epilog)
-
-    argumentParser.add_argument ('-H', '--host', dest = 'host', default = 'localhost',
-                                 help = 'hostname')
-    argumentParser.add_argument ('-P', '--port', type = int, dest = 'port', default = 3306,
-                                 help = 'port')
-    argumentParser.add_argument ('-u', '--user', dest = 'user', required = True,
-                                 help = 'username')
-    argumentParser.add_argument ('-p', '--pass', dest = 'passwd', required = True,
-                                 help = 'password')
-
-    def __addOption (value):
+    def options (value):
         return value.split (',')
-    argumentParser.add_argument ('-m', '--mode', type = __addOption, dest = 'modes',
-                                 default = 'rows,data_length,index_length', help = 'modes')
-    argumentParser.add_argument ('-w', '--warning', type = __addOption, dest = 'warningLimits',
-                                 help = 'warning upper limits')
-    argumentParser.add_argument ('-c', '--critical', type = __addOption, dest = 'criticalLimits',
-                                 help = 'critical upper limits')
-    argumentParser.add_argument ('-A', '--all', dest = 'all', action = 'store_true',
-                                 default = False, help = 'show all values as performance data')
-    argumentParser.add_argument ('-B', '--average', dest = 'average', action = 'store_true',
-                                 default = False, help = 'show averages')
-    argumentParser.add_argument ('-M', '--maximum', dest = 'maximum', action = 'store_true',
-                                 default = False, help = 'show maximums')
-    argumentParser.add_argument ('-N', '--minimum', dest = 'minimum', action = 'store_true',
-                                 default = False, help = 'show minimums')
 
+    argumentParser = ArgumentParser (formatter_class = HelpFormatter, description = description, epilog = epilog)
+    argumentParser.add_argument ('-H', '--host', dest = 'host', help = 'hostname', default = 'localhost')
+    argumentParser.add_argument ('-P', '--port', type = int, dest = 'port', help = 'port', default = 3306)
+    argumentParser.add_argument ('-u', '--user', dest = 'user', required = True, help = 'username')
+    argumentParser.add_argument ('-p', '--pass', dest = 'passwd', required = True, help = 'password')
+    argumentParser.add_argument ('-m', '--mode', type = options, dest = 'modes', help = 'modes', default = defaultModes)
+    argumentParser.add_argument ('-w', '--warning', type = options, dest = 'warnings', help = 'warning limits')
+    argumentParser.add_argument ('-c', '--critical', type = options, dest = 'criticals', help = 'critical limits')
+    argumentParser.add_argument ('-t', '--tables', type = options, dest = 'tables', help = 'show selected tables')
+    argumentParser.add_argument ('-a', '--all', dest = 'all', action = 'store_true', help = 'show all tables')
+    argumentParser.add_argument ('-A', '--average', dest = 'average', action = 'store_true', help = 'show averages')
+    argumentParser.add_argument ('-M', '--maximum', dest = 'maximum', action = 'store_true', help = 'show maximums')
+    argumentParser.add_argument ('-N', '--minimum', dest = 'minimum', action = 'store_true', help = 'show minimums')
     return argumentParser.parse_args ()
 
 if __name__ == '__main__':
@@ -291,16 +291,18 @@ if __name__ == '__main__':
     for counter, mode in enumerate (arguments.modes):
         attributes.append (mode)
         warningLimit = None
-        if arguments.warningLimits:
-            if counter < len (arguments.warningLimits):
-                warningLimit = Value (arguments.warningLimits [counter])
+        if arguments.warnings:
+            if counter < len (arguments.warnings):
+                warningLimit = Value (arguments.warnings [counter])
         criticalLimit = None
-        if arguments.criticalLimits:
-            if counter < len (arguments.criticalLimits):
-                criticalLimit = Value (arguments.criticalLimits [counter])
+        if arguments.criticals:
+            if counter < len (arguments.criticals):
+                criticalLimit = Value (arguments.criticals [counter])
         checker.addOutput (OutputUpperLimit (mode, warningLimit, criticalLimit))
         if arguments.all:
             checker.addOutput (OutputAll (mode, warningLimit, criticalLimit))
+        elif arguments.tables:
+            checker.addOutput (OutputTables (arguments.tables, mode, warningLimit, criticalLimit))
         if arguments.average:
             checker.addOutput (OutputAverage (mode, warningLimit, criticalLimit))
         if arguments.maximum:
