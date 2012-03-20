@@ -144,12 +144,15 @@ class OutputAverage (Output):
             self.__count += 1
             self.__total += int (table.getAttribute (self._attribute))
 
+    def getValue (self):
+        return Value (round (self.__total / self.__count))
+
     def getMessage (self, name):
         if self.__count:
             if name == 'ok':
-                return 'average ' + self._attribute + ' = ' + str (round (self.__total / self.__count)) + ';'
+                return 'average ' + self._attribute + ' = ' + str (self.getValue ()) + ';'
             if name == 'performance':
-                return self.getPerformanceData ('average', round (self.__total / self.__count))
+                return self.getPerformanceData ('average', int (self.getValue ()))
 
 class OutputMaximum (Output):
     def __init__ (self, *args):
@@ -184,7 +187,7 @@ class OutputMinimum (Output):
     def getMessage (self, name):
         if self.__table:
             if name == 'ok':
-                message = 'minimum' + self._attribute + ' = ' + str (self.__table.getAttribute (self._attribute))
+                message = 'minimum ' + self._attribute + ' = ' + str (self.__table.getAttribute (self._attribute))
                 return message + ' for table ' + str (self.__table) + ';'
             if name == 'performance':
                 return self.getPerformanceData ('minimum', int (self.__table.getAttribute (self._attribute)))
