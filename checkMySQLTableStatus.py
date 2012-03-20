@@ -205,16 +205,21 @@ class Checker:
             if hasattr (output, 'check'):
                 output.check (*args)
 
-    def getMessage (self, name):
-        message = ''
-        for output in self.__outputs:
-            if hasattr (output, 'getMessage'):
-                newMessage = output.getMessage (name)
-                if newMessage:
-                    if message:
-                        message += ' '
-                    message += newMessage
-        return message
+    def concatenateMessages (self, messages):
+        concatenatedMessage = ''
+        for message in messages:
+            if message:
+                if concatenatedMessage:
+                    concatenatedMessage += ' '
+                concatenatedMessage += message
+        return concatenatedMessage
+
+    messageNames = ('ok', 'warning', 'critical', 'performance')
+    def getMessages (self):
+        messages = {}
+        for name in Checker.messageNames:
+            messages [name] = self.concatenateMessages ([output.getMessage (name) for output in self.__outputs])
+        return messages
 
 class Readme:
     def __init__ (self):
@@ -314,7 +319,6 @@ if __name__ == '__main__':
             if arguments.minimum:
                 checker.addOutput (OutputMinimum (mode, warningLimit, criticalLimit))
 
-
         database = Database (arguments.host, arguments.port, arguments.user, arguments.passwd)
         for schemaRow in database.select ('Show schemas'):
             showTablesQuery = 'Show table status in %s where Engine is not null' % schemaRow [0]
@@ -326,27 +330,27 @@ if __name__ == '__main__':
                         table.addAttribute (attribute, Value (tableRow[columnPosition]))
                 checker.check (table)
 
-        criticalMessage = checker.getMessage ('critical')
-        if criticalMessage:
-            print 'critical:', criticalMessage,
-        warningMessage = checker.getMessage ('warning')
-        if warningMessage:
-            print 'warning:', warningMessage,
-        if not criticalMessage and not warningMessage:
-            okMessage = checker.getMessage ('ok')
-            if okMessage:
-                print 'ok:', okMessage,
+        messages = checker.getMessages ()
+    except Exception, exception:
+        try:
+            print 'unknown:', exception [1],
+        except IndexError:
+            print 'unknown:', exception,
+        sys.exit (3)
+    else:
+        if messages ['critical']:
+            print 'critical:', messages ['critical'],
+        if messages ['warning']:
+            print 'warning:', messages ['warning'],
+        if not messages ['critical'] and not messages ['warning']:
+            if messages ['ok']:
+                print 'ok:', messages ['ok'],
             else:
                 print 'ok',
-        performanceData = checker.getMessage ('performance')
-        if performanceData:
-            print '|', performanceData,
-
-        if criticalMessage:
+        if messages ['performance']:
+            print '|', messages ['performance'],
+        if messages ['critical']:
             sys.exit (2)
-        if warningMessage:
+        if messages ['warning']:
             sys.exit (1)
         sys.exit (0)
-    except Exception as exception:
-        print 'unknown:', exception
-        sys.exit (3)
