@@ -81,6 +81,7 @@ class Database:
                 return position
 
     def yieldTables (self, attributes):
+        '''Iterate tables with selected attributes.'''
         for schemaRow in self.select ('Show schemas'):
             for tableRow in self.select ('Show table status in ' + schemaRow [0] + ' where Engine is not null'):
                 attributeValues = {}
@@ -97,6 +98,7 @@ class Output:
         self._criticalLimit = criticalLimit
 
     def getPerformanceData (self, name, value):
+        '''Format performance data.'''
         message = name + '.' + self._attribute + '=' + str (value) + ';'
         if self._warningLimit:
             message += str (int (self._warningLimit))
@@ -243,6 +245,7 @@ class Checker:
     description += 'K for 10**3, M for 10**6, G for 10**9, T for 10**12 units can be used for limits.\n'
     defaultModes = 'rows,data_length,index_length'
     def parseArguments (self):
+        '''Create ArgumentParser instance. Return parsed arguments.'''
         try:
             readme = Readme ()
             epilog = readme.getSectionsConcatenated ()
@@ -306,6 +309,7 @@ class Checker:
 
     messageNames = ('ok', 'warning', 'critical', 'performance')
     def getMessages (self):
+        '''Check all tables for all output instances. Return the messages.'''
         for table in self.__database.yieldTables (self.__attributes):
             for output in self.__outputs:
                 output.check (table)
@@ -320,7 +324,7 @@ if __name__ == '__main__':
     try:
         checker = Checker ()
         messages = checker.getMessages ()
-    except IndexError, exception:
+    except Exception, exception:
         try:
             print 'unknown:', exception [1],
         except IndexError:
