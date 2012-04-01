@@ -47,20 +47,48 @@ class Value:
         return cmp (int (self), int (other))
 
 class Table:
-    def __init__ (self, schema, name):
+    def __init__ (self, schema, name, attributeValues):
         self.__schema = schema
         self.__name = name
-        self.__attributes = {}
+        self.__attributeValues = attributeValues
 
     def __str__ (self):
         return self.__schema + '.' + self.__name
 
-    def addAttribute (self, name, value):
-        self.__attributes [name] = value
-
     def getAttribute (self, name):
-        if self.__attributes.has_key (name):
-            return self.__attributes [name]
+        if self.__attributeValues.has_key (name):
+            return self.__attributeValues [name]
+
+class Database:
+    def __init__ (self, host, port, user, passwd):
+        import MySQLdb
+        self.__connection = MySQLdb.connect (host = host, port = port, user = user, passwd = passwd)
+        self.__cursor = self.__connection.cursor ()
+
+    def __del__ (self):
+        if self.__cursor:
+            self.__cursor.close ()
+            self.__connection.close ()
+
+    def select (self, query):
+        self.__cursor.execute (query)
+        return self.__cursor.fetchall ()
+
+    def getColumnPosition (self, name):
+        column = [desc [0] for desc in self.__cursor.description]
+        for position, column in enumerate (column):
+            if column.lower () == name.lower ():
+                return position
+
+    def yieldTables (self, attributes):
+        for schemaRow in self.select ('Show schemas'):
+            for tableRow in self.select ('Show table status in ' + schemaRow [0] + ' where Engine is not null'):
+                attributeValues = {}
+                for attribute in attributes:
+                    columnPosition = self.getColumnPosition (attribute)
+                    if tableRow [columnPosition]:
+                        attributeValues [attribute] = (Value (tableRow [columnPosition]))
+                yield Table (schemaRow [0], tableRow [0], attributeValues)
 
 class Output:
     def __init__ (self, attribute, warningLimit = None, criticalLimit = None):
@@ -192,35 +220,6 @@ class OutputMinimum (Output):
             if name == 'performance':
                 return self.getPerformanceData ('minimum', int (self.__table.getAttribute (self._attribute)))
 
-class Checker:
-    def __init__ (self):
-        self.__outputs = []
-
-    def addOutput (self, output):
-        assert isinstance (output, Output)
-        self.__outputs.append (output)
-
-    def check (self, *args):
-        for output in self.__outputs:
-            if hasattr (output, 'check'):
-                output.check (*args)
-
-    def concatenateMessages (self, messages):
-        concatenatedMessage = ''
-        for message in messages:
-            if message:
-                if concatenatedMessage:
-                    concatenatedMessage += ' '
-                concatenatedMessage += message
-        return concatenatedMessage
-
-    messageNames = ('ok', 'warning', 'critical', 'performance')
-    def getMessages (self):
-        messages = {}
-        for name in Checker.messageNames:
-            messages [name] = self.concatenateMessages ([output.getMessage (name) for output in self.__outputs])
-        return messages
-
 class Readme:
     def __init__ (self):
         '''Parse texts on the readme file on the repository to sections..'''
@@ -239,66 +238,43 @@ class Readme:
             body += section + '\n'
         return body
 
-class Database:
-    __cursor = None
-    def __init__ (self, host, port, user, passwd):
-        import MySQLdb
-        self.__connection = MySQLdb.connect (host = host, port = port, user = user, passwd = passwd)
-        self.__cursor = self.__connection.cursor ()
-
-    def __del__ (self):
-        if self.__cursor:
-            self.__cursor.close ()
-            self.__connection.close ()
-
-    def select (self, query):
-        self.__cursor.execute (query)
-        return self.__cursor.fetchall ()
-
-    def getColumnPosition (self, columnName):
-        names = [desc [0] for desc in self.__cursor.description]
-        for __id, name in enumerate (names):
-            if columnName.lower () == name.lower ():
-                return __id
-
-def parseArguments ():
+class Checker:
     description = 'Multiple vales can be given comma separated to modes and limits.\n'
     description += 'K for 10**3, M for 10**6, G for 10**9, T for 10**12 units can be used for limits.\n'
     defaultModes = 'rows,data_length,index_length'
-    try:
-        readme = Readme ()
-        epilog = readme.getSectionsConcatenated ()
-    except IOError:
-        epilog = None
-    from argparse import ArgumentParser, RawTextHelpFormatter, ArgumentDefaultsHelpFormatter
-    class HelpFormatter (RawTextHelpFormatter, ArgumentDefaultsHelpFormatter): pass
-    def options (value):
-        return value.split (',')
+    def parseArguments (self):
+        try:
+            readme = Readme ()
+            epilog = readme.getSectionsConcatenated ()
+        except IOError:
+            epilog = None
+        def options (value):
+            return value.split (',')
 
-    argumentParser = ArgumentParser (formatter_class = HelpFormatter, description = description, epilog = epilog)
-    argumentParser.add_argument ('-H', '--host', dest = 'host', help = 'hostname', default = 'localhost')
-    argumentParser.add_argument ('-P', '--port', type = int, dest = 'port', help = 'port', default = 3306)
-    argumentParser.add_argument ('-u', '--user', dest = 'user', required = True, help = 'username')
-    argumentParser.add_argument ('-p', '--pass', dest = 'passwd', required = True, help = 'password')
-    argumentParser.add_argument ('-m', '--mode', type = options, dest = 'modes', help = 'modes', default = defaultModes)
-    argumentParser.add_argument ('-w', '--warning', type = options, dest = 'warnings', help = 'warning limits')
-    argumentParser.add_argument ('-c', '--critical', type = options, dest = 'criticals', help = 'critical limits')
-    argumentParser.add_argument ('-t', '--tables', type = options, dest = 'tables', help = 'show selected tables')
-    argumentParser.add_argument ('-a', '--all', dest = 'all', action = 'store_true', help = 'show all tables')
-    argumentParser.add_argument ('-A', '--average', dest = 'average', action = 'store_true', help = 'show averages')
-    argumentParser.add_argument ('-M', '--maximum', dest = 'maximum', action = 'store_true', help = 'show maximums')
-    argumentParser.add_argument ('-N', '--minimum', dest = 'minimum', action = 'store_true', help = 'show minimums')
-    return argumentParser.parse_args ()
+        from argparse import ArgumentParser, RawTextHelpFormatter, ArgumentDefaultsHelpFormatter
+        class Formatter (RawTextHelpFormatter, ArgumentDefaultsHelpFormatter): pass
+        argumentParser = ArgumentParser (formatter_class = Formatter, description = self.description, epilog = epilog)
+        argumentParser.add_argument ('-H', '--host', dest = 'host', help = 'hostname', default = 'localhost')
+        argumentParser.add_argument ('-P', '--port', type = int, dest = 'port', default = 3306)
+        argumentParser.add_argument ('-u', '--user', dest = 'user', required = True, help = 'username')
+        argumentParser.add_argument ('-p', '--pass', dest = 'passwd', required = True, help = 'password')
+        argumentParser.add_argument ('-m', '--mode', type = options, dest = 'modes', default = self.defaultModes)
+        argumentParser.add_argument ('-w', '--warning', type = options, dest = 'warnings', help = 'warning limits')
+        argumentParser.add_argument ('-c', '--critical', type = options, dest = 'criticals', help = 'critical limits')
+        argumentParser.add_argument ('-t', '--tables', type = options, dest = 'tables', help = 'show selected tables')
+        argumentParser.add_argument ('-a', '--all', dest = 'all', action = 'store_true', help = 'show all tables')
+        argumentParser.add_argument ('-A', '--average', dest = 'average', action = 'store_true', help = 'show averages')
+        argumentParser.add_argument ('-M', '--maximum', dest = 'maximum', action = 'store_true', help = 'show maximums')
+        argumentParser.add_argument ('-N', '--minimum', dest = 'minimum', action = 'store_true', help = 'show minimums')
+        return argumentParser.parse_args ()
 
-if __name__ == '__main__':
-    print 'CheckMySQLTableStatus',
-    import sys
-    try:
-        arguments = parseArguments ()
-        attributes = []
-        checker = Checker ()
+    def __init__ (self):
+        arguments = self.parseArguments ()
+        self.__attributes = []
+        self.__outputs = []
+        self.__database = Database (arguments.host, arguments.port, arguments.user, arguments.passwd)
         for counter, mode in enumerate (arguments.modes):
-            attributes.append (mode)
+            self.__attributes.append (mode)
             warningLimit = None
             if arguments.warnings:
                 if counter < len (arguments.warnings):
@@ -307,31 +283,44 @@ if __name__ == '__main__':
             if arguments.criticals:
                 if counter < len (arguments.criticals):
                     criticalLimit = Value (arguments.criticals [counter])
-            checker.addOutput (OutputUpperLimit (mode, warningLimit, criticalLimit))
+            self.__outputs.append (OutputUpperLimit (mode, warningLimit, criticalLimit))
             if arguments.all:
-                checker.addOutput (OutputAll (mode, warningLimit, criticalLimit))
+                self.__outputs.append (OutputAll (mode, warningLimit, criticalLimit))
             elif arguments.tables:
-                checker.addOutput (OutputTables (arguments.tables, mode, warningLimit, criticalLimit))
+                self.__outputs.append (OutputTables (arguments.tables, mode, warningLimit, criticalLimit))
             if arguments.average:
-                checker.addOutput (OutputAverage (mode, warningLimit, criticalLimit))
+                self.__outputs.append (OutputAverage (mode, warningLimit, criticalLimit))
             if arguments.maximum:
-                checker.addOutput (OutputMaximum (mode, warningLimit, criticalLimit))
+                self.__outputs.append (OutputMaximum (mode, warningLimit, criticalLimit))
             if arguments.minimum:
-                checker.addOutput (OutputMinimum (mode, warningLimit, criticalLimit))
+                self.__outputs.append (OutputMinimum (mode, warningLimit, criticalLimit))
 
-        database = Database (arguments.host, arguments.port, arguments.user, arguments.passwd)
-        for schemaRow in database.select ('Show schemas'):
-            showTablesQuery = 'Show table status in %s where Engine is not null' % schemaRow [0]
-            for tableRow in database.select (showTablesQuery):
-                table = Table (schemaRow [0], tableRow [0])
-                for attribute in attributes:
-                    columnPosition = database.getColumnPosition (attribute)
-                    if tableRow[columnPosition]:
-                        table.addAttribute (attribute, Value (tableRow[columnPosition]))
-                checker.check (table)
+    def concatenateMessages (self, messages):
+        concatenatedMessage = ''
+        for message in messages:
+            if message:
+                if concatenatedMessage:
+                    concatenatedMessage += ' '
+                concatenatedMessage += message
+        return concatenatedMessage
 
+    messageNames = ('ok', 'warning', 'critical', 'performance')
+    def getMessages (self):
+        for table in self.__database.yieldTables (self.__attributes):
+            for output in self.__outputs:
+                output.check (table)
+        messages = {}
+        for name in Checker.messageNames:
+            messages [name] = self.concatenateMessages ([output.getMessage (name) for output in self.__outputs])
+        return messages
+
+if __name__ == '__main__':
+    print 'CheckMySQLTableStatus',
+    import sys
+    try:
+        checker = Checker ()
         messages = checker.getMessages ()
-    except Exception, exception:
+    except IndexError, exception:
         try:
             print 'unknown:', exception [1],
         except IndexError:
