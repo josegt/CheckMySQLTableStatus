@@ -241,8 +241,8 @@ class Readme:
         return body
 
 class Checker:
-    description = 'Multiple vales can be given comma separated to modes and limits.\n'
-    description += 'K for 10**3, M for 10**6, G for 10**9, T for 10**12 units can be used for limits.\n'
+    '''Modes used to check different values of tables. Multiple vales can be given comma separated to modes and limits.
+    K for 10**3, M for 10**6, G for 10**9, T for 10**12 units can be used for limits.'''
     defaultModes = 'rows,data_length,index_length'
     def parseArguments (self):
         '''Create ArgumentParser instance. Return parsed arguments.'''
@@ -256,7 +256,7 @@ class Checker:
 
         from argparse import ArgumentParser, RawTextHelpFormatter, ArgumentDefaultsHelpFormatter
         class Formatter (RawTextHelpFormatter, ArgumentDefaultsHelpFormatter): pass
-        argumentParser = ArgumentParser (formatter_class = Formatter, description = self.description, epilog = epilog)
+        argumentParser = ArgumentParser (formatter_class = Formatter, description = self.__doc__, epilog = epilog)
         argumentParser.add_argument ('-H', '--host', dest = 'host', help = 'hostname', default = 'localhost')
         argumentParser.add_argument ('-P', '--port', type = int, dest = 'port', default = 3306)
         argumentParser.add_argument ('-u', '--user', dest = 'user', required = True, help = 'username')
